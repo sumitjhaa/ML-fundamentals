@@ -1,0 +1,285 @@
+\documentclass{article}
+\usepackage[preprint]{neurips_2026}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{microtype}
+\usepackage{xcolor}
+
+% Clickable links without the default boxes around citations/equation references.
+\hypersetup{colorlinks=true, citecolor=black, linkcolor=black, urlcolor=blue}
+
+% This is an ES 678 course paper, not a conference submission.
+\makeatletter
+\renewcommand{\@noticestring}{ES 678 Course Project}
+\makeatother
+
+\title{How Small Can a Reliable Prediction Set Be? Conformity-Score Design and
+Class-Conditional Coverage in Conformal Classification}
+
+\author{%
+  Sumit Kumar Jha \\
+  Roll Number: 26210180 \\
+  ES 678 \\
+  Indian Institute of Technology Gandhinagar \\
+  \href{mailto:sumitjha@iitgn.ac.in}{\texttt{sumitjha@iitgn.ac.in}}
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Conformal prediction wraps a fixed classifier so that it returns a \emph{set} of labels containing
+the true class with probability at least $1-\alpha$, without retraining and without distributional
+assumptions. This guarantee is only \emph{marginal}, however: it averages over the data and does not
+control coverage for a particular class or a particular input. This project studies how the choice of
+conformity score---including a proposed temperature-scaled, distance-augmented score---affects the
+\emph{size} of prediction sets at a fixed guaranteed coverage, and audits the class-conditional
+coverage that marginal guarantees fail to control, on MNIST and CIFAR-10 with an out-of-distribution
+failure audit. The ES 678 depth component derives the coverage theorem and characterises the
+efficiency--conditional-coverage frontier.
+\end{abstract}
+
+\section{Problem and Motivation}
+\textbf{Question.} For a fixed, already-trained image classifier, how do (i) the choice of
+\emph{conformity score} and (ii) the addition of feature-space \emph{distance} information affect
+\emph{both} the \emph{size} of conformal prediction sets at a fixed, guaranteed coverage level
+\emph{and} the \emph{class-conditional} coverage that marginal guarantees do not control?
+
+\textbf{Intended prediction.} For each test input $x$ we output a \emph{set} of labels
+$C(x)\subseteq\{1,\dots,K\}$ rather than a single label, such that $P\big(Y\in C(X)\big)\ge 1-\alpha$
+without retraining and with no distributional assumptions beyond the exchangeability of calibration
+and test data \citep{vovk2005algorithmic,shafer2008tutorial}. A prediction is made at inference time,
+when no label is available and the input may be unfamiliar.
+
+\textbf{What one data row represents.} One row is one image together with its ground-truth class
+label; features are raw pixels and the model produces $\hat p(y\mid x)$. We evaluate set efficiency
+and coverage, not raw accuracy, because a trustworthy system must know \emph{when} it is guessing.
+
+\section{Data and Preparation}
+All datasets are public and load directly through \texttt{torchvision}; there are no access or
+sharing restrictions. One row is one image with its class label.
+
+\begin{center}
+\small
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{p{2.8cm}p{3.9cm}p{5.5cm}}
+\toprule
+\textbf{Dataset} & \textbf{Role} & \textbf{Size / format} \\
+\midrule
+MNIST            & In-distribution (validity check) & 60{,}000 train / 10{,}000 test, $28\times28$ grayscale \\
+CIFAR-10         & In-distribution (primary)        & 50{,}000 train / 10{,}000 test, $32\times32$ RGB \\
+FashionMNIST, KMNIST & OOD for MNIST                & 10{,}000 test each \\
+SVHN, CIFAR-100  & OOD for CIFAR-10                 & 10{,}000 or more test each \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Access: yes} (fully public, downloaded by \texttt{torchvision}); the standard, unmodified
+splits are used so results are comparable to the literature. \textbf{Quality checks.} We verify class
+balance, pixel-value ranges, and near-duplicate images. \textbf{Preprocessing.} Inputs are normalised
+with per-channel statistics computed on $D_{\text{train}}$ only; CIFAR-10 augmentation (random crop,
+horizontal flip) is applied during training only, so no learned transformation touches the
+calibration or test data. Because MNIST is nearly saturated (prediction sets collapse to singletons
+at $\alpha\ge0.1$), the \emph{efficiency} study leads with CIFAR-10 and uses MNIST as a validity
+check.
+
+\section{Methods}
+\textbf{Conformal construction.} Let $f$ be the classifier producing $\hat p(y\mid x)$, and let
+$s(x,y)$ be a \emph{conformity score} (smaller $=$ more conforming). Given the $n$ calibration scores
+$S_1,\dots,S_n$, split conformal takes the quantile
+\begin{equation}
+  \hat q = S_{(k)}, \qquad k=\big\lceil (n+1)(1-\alpha)\big\rceil,
+  \label{eq:quantile}
+\end{equation}
+where $S_{(1)}\le\dots\le S_{(n)}$ are the sorted calibration scores, and returns the set
+\begin{equation}
+  C(x)=\{\,y : s(x,y)\le \hat q\,\}.
+  \label{eq:set}
+\end{equation}
+Under exchangeability this guarantees, for finite $n$,
+\begin{equation}
+  1-\alpha \;\le\; P\big(Y\in C(X)\big) \;\le\; 1-\alpha+\frac{1}{n+1}.
+  \label{eq:bound}
+\end{equation}
+
+\textbf{Baselines.} (1) Top-1 point prediction (accuracy reference: no set and no guarantee);
+(2) a simple logistic-regression classifier on MNIST, to justify the use of a CNN; and (3) the
+\emph{naive} conformity score $s(x,y)=1-\hat p(y\mid x)$, which is valid but not adaptive.
+
+\textbf{Candidate scores.} The first three are established; the last is ours.
+\begin{align}
+  s_{\text{naive}}(x,y)   &= 1-\hat p(y\mid x), \label{eq:naive}\\[2pt]
+  s_{\text{APS}}(x,y)     &= \sum_{j<k_y}\hat p_{(j)}(x)+u\,\hat p_{(k_y)}(x),
+                             \qquad u\sim\mathrm{Unif}(0,1), \label{eq:aps}\\[2pt]
+  s_{\text{RAPS}}(x,y)    &= s_{\text{APS}}(x,y)+\lambda\,(k_y-k_{\text{reg}})^{+},
+                             \label{eq:raps}\\[2pt]
+  s_\gamma(x,y)           &= \big(1-\hat p_T(y\mid x)\big)+\gamma\,\tilde d_M(x,y),
+                             \qquad \gamma\ge 0, \label{eq:proposed}
+\end{align}
+with the temperature-scaled probabilities and the Mahalanobis distance defined by
+\begin{align}
+  \hat p_T(y\mid x) &= \operatorname{softmax}\!\big(z(x)/T\big), \label{eq:temp}\\[2pt]
+  d_M(x,y)          &= \sqrt{\big(\phi(x)-\mu_y\big)^{\!\top}\,\Sigma^{-1}\,\big(\phi(x)-\mu_y\big)},
+                       \label{eq:maha}
+\end{align}
+where $z(x)$ are the logits, $\phi(x)$ the penultimate features, and $\mu_y,\Sigma$ the per-class
+means and a shared covariance. Here $k_y$ is the rank of $y$ in the sorted probabilities, APS is
+Adaptive Prediction Sets \citep{romano2020classification}, RAPS adds a rank penalty
+\citep{angelopoulos2021learn}, $T$ is fit by minimising the negative log-likelihood
+\citep{guo2017calibration}, and the distance term follows the Mahalanobis OOD score
+\citep{lee2018simple}.
+
+\textbf{Where every quantity is fit (leakage discipline).} The classifier is trained on
+$D_{\text{train}}$. The temperature $T$, the RAPS parameters $\lambda,k_{\text{reg}}$, our distance
+weight $\gamma$, and method selection all use $D_{\text{design}}$ only. The class Gaussians
+$(\mu_y,\Sigma)$ and the standardisation of $d_M$ are also fit on $D_{\text{design}}$ (held out from
+training), so they are not in-sample for the classifier. The quantile $\hat q$ of \eqref{eq:quantile}
+uses $D_{\text{cal}}$ only, and $D_{\text{test}}$ is opened once, for the final table. Mondrian
+(class-conditional) conformal instead calibrates a separate per-class quantile $\hat q_c$ from
+calibration points with label $c$, guaranteeing $P(Y\in C(X)\mid Y=c)\ge 1-\alpha$
+\citep{vovk2012conditional}. Our score \eqref{eq:proposed} reduces to the temperature-scaled baseline
+at $\gamma=0$, giving a clean ablation.
+
+\section{Evaluation Design}
+\textbf{Split.} A fixed, disjoint four-way split is used \emph{before} any comparison:
+$D_{\text{train}}$ (fit classifier) / $D_{\text{design}}$ (early stopping; fit
+$T,\gamma,\lambda,k_{\text{reg}}$; method selection) / $D_{\text{cal}}$ (compute $\hat q$ only) /
+$D_{\text{test}}$ (final metrics). Model selection and tuning are thus kept entirely separate from
+final testing.
+
+\textbf{Metrics.} We report (i) \emph{marginal empirical coverage}, read against the finite-sample
+window in \eqref{eq:bound} so that a result counts as valid only if the observed coverage lies inside
+it; (ii) \emph{mean}, median and 90th-percentile \emph{set size}---the efficiency metric, because
+smaller sets are strictly more useful at the same error budget \citep{sadinle2019least}; (iii)
+singleton and empty-set rates; (iv) \emph{class-conditional} coverage and the worst-class gap; (v)
+subgroup coverage by confidence decile; and (vi) coverage and size on the OOD sets. The study is
+repeated for $\alpha\in\{0.01,0.05,0.10,0.20\}$ and reported as mean $\pm$ standard deviation over
+3--5 seeds.
+
+\section{Results and Error Analysis}
+Because this is a proposal, we state the expected results as testable hypotheses; a negative result
+is acceptable and will be reported as such.
+\begin{itemize}
+  \item \textbf{H1 (validity).} Empirical marginal coverage lies in the window of \eqref{eq:bound}
+        for every score. \emph{Falsifier:} coverage outside the window.
+  \item \textbf{H2 (efficiency).} APS yields a smaller mean set size than the naive score at matched
+        coverage. \emph{Falsifier:} naive $\le$ APS.
+  \item \textbf{H3 (calibration).} Temperature scaling reduces the APS set size on the miscalibrated
+        CIFAR-10 classifier. \emph{Falsifier:} no improvement.
+  \item \textbf{H4 (distance term).} $s_\gamma$ with $\gamma>0$ reduces the worst-class coverage gap
+        versus temperature-only, at a bounded cost in mean set size. \emph{Falsifier:} the gap is
+        unchanged or worse.
+  \item \textbf{H5 (conditional coverage).} Mondrian attains the smallest worst-class gap but the
+        largest mean set size. \emph{Falsifier:} Mondrian is not best on conditional coverage.
+\end{itemize}
+\textbf{Error analysis.} We will inspect which classes and inputs break coverage, whether failures
+concentrate in low-confidence deciles, and how coverage and size behave on the OOD sets where
+exchangeability fails.
+
+\section{Graduate Depth Analysis}
+The primary reference discussed is the adaptive prediction sets of
+\citet{romano2020classification}, extended with rank regularisation \citep{angelopoulos2021learn},
+calibration
+\citep{guo2017calibration}, and a Mahalanobis feature-space distance \citep{lee2018simple}. The PG
+depth deliverable is a study of the \emph{efficiency--conditional-coverage frontier}, containing:
+\begin{enumerate}
+  \item \textbf{Derivation / theory.} A full proof, under exchangeability, of the split-conformal
+        coverage bound \eqref{eq:bound}, with the finite-sample slack $1/(n+1)$ interpreted
+        explicitly.
+  \item \textbf{Calibration / uncertainty analysis.} Class-conditional coverage per class, the
+        worst-class coverage gap, and a comparison of the proposed $s_\gamma$ against Mondrian
+        (guaranteed) and temperature-only baselines.
+  \item \textbf{Sensitivity / ablation.} An $\alpha\times\gamma$ grid; the ablation
+        $s_{\text{APS}}\to s_{\text{APS}}(T)\to s_{\text{APS}}(T)+\text{distance}$ that isolates the
+        contribution of each term.
+  \item \textbf{Failure-mode audit.} Which classes and inputs break coverage; behaviour on OOD sets
+        where exchangeability fails and the guarantee is void (see covariate-shift conformal
+        \citep{tibshirani2019conformal}); and the effect of a small calibration set $n$ on the slack
+        in \eqref{eq:bound}.
+\end{enumerate}
+This satisfies four of the addendum's listed options (derivation, calibration/uncertainty,
+sensitivity/ablation, failure-mode audit).
+
+\section{Limitations and Conclusion}
+\textbf{One likely challenge.} \emph{Conditional coverage is not achievable for arbitrary inputs}
+(a known impossibility), so validity must be framed as \emph{marginal} coverage plus an
+\emph{empirical} conditional-coverage audit. A related risk is \emph{leakage}: tuning the conformal
+score on the same split used to compute $\hat q$ breaks exchangeability and silently invalidates the
+guarantee---hence the strict $D_{\text{design}}\,/\,D_{\text{cal}}$ separation above. A third risk is
+that the proposed distance term yields only a small or null gain; this is anticipated (H4) and will
+be reported honestly rather than overclaimed. \textbf{Mitigations:} separate design and calibration
+splits; multiple seeds with error bars; a disclosed fallback CIFAR-10 backbone; and leading with the
+CIFAR-10 efficiency study while treating MNIST as a validity check. \textbf{Conclusion.} By holding
+the classifier fixed and varying only the conformity score, the project answers a precise question:
+how to shrink prediction sets without losing the coverage guarantee, and where that guarantee fails
+conditionally.
+
+\section{Reproducibility and AI-Use Disclosure}
+The code is organised as a pipeline (\texttt{data}$\to$\texttt{model}$\to$\texttt{calibrate}$\to$
+\texttt{scores}$\to$\texttt{conformal}$\to$\texttt{evaluate}) with a single entry point that
+regenerates every figure and table from YAML configs and fixed seeds; all datasets load via
+\texttt{torchvision}. \textbf{Compute.} The classifier is trained once (three seeds for stability);
+the reported error bars vary only the calibration/test split and the randomised-APS seed, so the full
+grid is feasible on an Apple-silicon laptop (MPS). \textbf{Timeline (four weeks).} Week 1: data,
+four-way split, and a naive-conformal coverage sanity check. Week 2: APS/RAPS and temperature
+scaling. Week 3: the distance-augmented score plus the conditional-coverage and OOD audits. Week 4:
+the four-page paper, the reproduction script, and defence preparation. \textbf{Tools and AI use.}
+Python 3.11, PyTorch (MPS on Apple Silicon), torchvision, NumPy, SciPy, pandas, Matplotlib; \LaTeX{}
+for this proposal. AI tools were used for brainstorming, boilerplate and editing; every equation,
+number and claim is verified independently by the author and disclosed in the final paper.
+
+\begin{thebibliography}{9}
+\bibitem[Angelopoulos et al.(2021)]{angelopoulos2021learn}
+Anastasios N. Angelopoulos, Stephen Bates, Michael I. Jordan, and Jitendra Malik.
+\newblock Uncertainty sets for image classifiers using conformal prediction.
+\newblock In \emph{International Conference on Learning Representations}, 2021.
+
+\bibitem[Guo et al.(2017)]{guo2017calibration}
+Chuan Guo, Geoff Pleiss, Yu Sun, and Kilian Q. Weinberger.
+\newblock On calibration of modern neural networks.
+\newblock In \emph{International Conference on Machine Learning}, 2017.
+
+\bibitem[Lee et al.(2018)]{lee2018simple}
+Kimin Lee, Kibok Lee, Honglak Lee, and Jinwoo Shin.
+\newblock A simple unified framework for detecting out-of-distribution samples and adversarial
+attacks.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2018.
+
+\bibitem[Romano et al.(2020)]{romano2020classification}
+Yaniv Romano, Matteo Sesia, and Emmanuel J. Cand\`es.
+\newblock Classification with valid and adaptive coverage.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2020.
+
+\bibitem[Sadinle et al.(2019)]{sadinle2019least}
+Mauricio Sadinle, Jing Lei, and Larry Wasserman.
+\newblock Least ambiguous set-valued classifiers with bounded error levels.
+\newblock \emph{Journal of the American Statistical Association}, 114(525):223--234, 2019.
+
+\bibitem[Shafer and Vovk(2008)]{shafer2008tutorial}
+Glenn Shafer and Vladimir Vovk.
+\newblock A tutorial on conformal prediction.
+\newblock \emph{Journal of Machine Learning Research}, 9:371--421, 2008.
+
+\bibitem[Tibshirani et al.(2019)]{tibshirani2019conformal}
+Ryan J. Tibshirani, Rina Foygel Barber, Emmanuel J. Cand\`es, and Aaditya Ramdas.
+\newblock Conformal prediction under covariate shift.
+\newblock In \emph{Advances in Neural Information Processing Systems}, 2019.
+
+\bibitem[Vovk(2012)]{vovk2012conditional}
+Vladimir Vovk.
+\newblock Conditional validity of inductive conformal predictors.
+\newblock In \emph{Asian Conference on Machine Learning}, 2012.
+
+\bibitem[Vovk et al.(2005)]{vovk2005algorithmic}
+Vladimir Vovk, Alexander Gammerman, and Glenn Shafer.
+\newblock \emph{Algorithmic Learning in a Random World}.
+\newblock Springer, 2005.
+\end{thebibliography}
+
+\end{document}

@@ -1,0 +1,15 @@
+# Core
+torch>=2.2
+torchvision>=0.17
+numpy>=1.26
+scipy>=1.11
+pandas>=2.2
+matplotlib>=3.8
+
+# Config + IO
+pyyaml>=6.0
+tqdm>=4.66
+
+# Notebooks / analysis (optional)
+jupyter>=1.0
+seaborn>=0.13

@@ -1,0 +1,92 @@
+\documentclass{article}
+\usepackage[preprint]{neurips_2026}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{graphicx}
+
+% This is an ES 678 course paper, not a conference submission.
+\makeatletter
+\renewcommand{\@noticestring}{ES 678 Course Project}
+\makeatother
+
+\title{How Small Can a Trustworthy Prediction Set Be?\\ Score Design and Class-Conditional Coverage in Conformal Classification}
+
+\author{%
+  <Your Name> \\
+  Roll Number: <Roll Number> \\
+  ES 678 \\
+  Indian Institute of Technology Gandhinagar
+}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+% 100--150 words: problem, data, method, evaluation, main finding.
+% Draft below; update numbers once results exist.
+We study how a fixed image classifier can produce trustworthy prediction \emph{sets} at a
+controlled error rate using conformal prediction, and how the choice of conformity score affects
+efficiency and conditional coverage. The marginal coverage guarantee is distribution-free and
+holds for \emph{any} score, so the research question is necessarily about set size and coverage
+beyond the marginal average. We compare naive, adaptive (APS) and regularised (RAPS) scores, a
+temperature-scaled variant, a proposed Mahalanobis-distance-augmented score, and class-conditional
+(Mondrian) conformal prediction, on MNIST and CIFAR-10, with an out-of-distribution failure audit.
+We derive the coverage theorem and quantify the efficiency--conditional-coverage frontier.
+\end{abstract}
+
+\section{Problem and Motivation}
+State the question in concrete terms: for a fixed classifier, how do score design and feature-space
+distance affect set size at fixed coverage, and the class-conditional coverage that marginal
+guarantees fail to control. Define the target (a label set $C(x)$), what one row represents (one
+image $+$ label), and when a prediction is made (inference time, no label available). Note the
+limits of the claim: distribution-free \emph{marginal} coverage under exchangeability; no guarantee
+under distribution shift.
+
+\section{Data and Preparation}
+Sources, sizes, and access: MNIST, CIFAR-10 (in-distribution); FashionMNIST, KMNIST, SVHN,
+CIFAR-100 (OOD); all via \texttt{torchvision}. Describe the four-way split
+($D_{train}, D_{design}, D_{cal}, D_{test}$) and state explicitly that all fitted preprocessing and
+all tuning use training/design data only.
+
+\section{Methods}
+Define the baseline (naive score, top-1) and each method: APS, RAPS, temperature scaling,
+Mahalanobis distance, the proposed $s_\gamma(x,y) = (1 - p_T(y|x)) + \gamma\,\tilde d_M(x,y)$, and
+Mondrian conformal. Give the objective/assumptions and define every symbol.
+
+\section{Evaluation Design}
+Describe the split before reporting results; separate tuning from final testing; define each metric
+(marginal coverage, mean/median/90th-percentile set size, singleton/empty rates, class-conditional
+coverage, worst-class gap, OOD behaviour). Justify each metric.
+
+\section{Results and Error Analysis}
+Main table (coverage vs size per score, per $\alpha$) and the efficiency frontist figure. Interpret
+in context; inspect failure cases (which classes/inputs break coverage); report uncertainty across
+seeds and subgroup results.
+
+\section{Graduate Depth Analysis}
+Present the coverage theorem derivation with the two-sided bound
+$1-\alpha \le P(Y \in C(X)) \le 1-\alpha + 1/(n+1)$, explain why marginal coverage cannot imply
+conditional coverage, and report the conditional-coverage audit, the $\alpha \times \gamma$
+sensitivity study, and the OOD failure-mode audit.
+
+\section{Limitations and Conclusion}
+Most important limitation and what evidence would strengthen the claim. Do not interpret predictive
+association as proof of causation. Conclude with the main answer.
+
+\section{Reproducibility and AI-Use Disclosure}
+Code and data links/instructions, split details, seeds. State which AI tools were used, how, and
+which outputs were independently verified.
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}

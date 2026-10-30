@@ -1,0 +1,45 @@
+# Experiment configuration for conformal prediction sets.
+# Rule: T, lambda, k_reg, gamma and method selection use D_design only.
+#       The conformal quantile q_hat uses D_cal only. D_test is opened once.
+
+datasets: [mnist, cifar10]
+seeds: [0, 1, 2]              # use 5 for the final run
+
+split:
+  train: 0.80
+  design: 0.10
+  calib: 0.10
+
+alphas: [0.01, 0.05, 0.10, 0.20]
+
+scores:
+  - naive
+  - aps
+  - raps
+  - temp_naive
+  - temp_aps
+  - dist_naive        # s(x,y) = (1 - p_T(y|x)) + gamma * d_M
+  - dist_aps          # s(x,y) = s_APS(p_T)     + gamma * d_M
+  - mondrian          # class-conditional conformal
+
+gamma_grid: [0.0, 0.01, 0.1, 0.3, 1.0]
+temperature: auto             # fit on D_design by NLL (LBFGS)
+raps:
+  lambda_grid: [0.01, 0.05, 0.1]
+  k_reg_grid: [1, 2, 5]
+
+model:
+  mnist: lenet
+  cifar10: small_resnet
+  epochs: 30
+  batch_size: 256
+  lr: 0.001
+
+ood:
+  mnist: [fashion_mnist, kmnist]
+  cifar10: [svhn, cifar100]
+
+outputs:
+  dir: results
+  save_figures: true
+  save_tables: true
